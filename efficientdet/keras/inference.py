@@ -246,7 +246,7 @@ class ServingDriver:
       test_func(image_arrays)
       tf.profiler.experimental.stop()
 
-  def serve(self, image_arrays):
+  def serve(self, image_arrays, fpn_levels=None):
     """Serve a list of image arrays.
 
     Args:
@@ -262,7 +262,7 @@ class ServingDriver:
       self.model.set_tensor(input_details[0]['index'], np.array(image_arrays))
       self.model.invoke()
       return [self.model.get_tensor(x['index']) for x in output_details]
-    return self.model(image_arrays)  # pylint: disable=not-callable
+    return self.model(image_arrays, fpn_levels=fpn_levels)  # pylint: disable=not-callable
 
   def load(self, saved_model_dir_or_frozen_graph: Text):
     """Load the model using saved model or a frozen graph."""

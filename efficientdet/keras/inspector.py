@@ -64,6 +64,9 @@ flags.DEFINE_bool('debug', False, 'Debug mode.')
 flags.DEFINE_bool('only_network', False, 'Model only contains network')
 FLAGS = flags.FLAGS
 
+# For ablation study.
+flags.DEFINE_list('fpn_levels', ['3', '4', '5', '6', '7'], 'Feature pyramid levels.')
+
 
 def main(_):
   tf.config.run_functions_eagerly(FLAGS.debug)
@@ -73,6 +76,7 @@ def main(_):
 
   model_config = hparams_config.get_detection_config(FLAGS.model_name)
   model_config.override(FLAGS.hparams)  # Add custom overrides
+  # model_config.nms_configs.score_thresh = 0.2
   model_config.is_training_bn = False
   if FLAGS.image_size != -1:
     model_config.image_size = FLAGS.image_size
@@ -105,7 +109,7 @@ def main(_):
         image_size = utils.parse_image_size(model_config.image_size)
         image_arrays = tf.image.resize_with_pad(image_arrays, *image_size)
         image_arrays = tf.cast(image_arrays, tf.uint8)
-    detections_bs = driver.serve(image_arrays)
+    detections_bs = driver.serve(image_arrays, fpn_levels=FLAGS.fpn_levels)
     boxes, scores, classes, _ = tf.nest.map_structure(np.array, detections_bs)
     raw_image = Image.fromarray(np.array(image_arrays)[0])
     img = driver.visualize(

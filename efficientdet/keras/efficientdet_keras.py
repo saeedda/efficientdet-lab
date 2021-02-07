@@ -780,12 +780,14 @@ class EfficientDetNet(tf.keras.Model):
                model_name=None,
                config=None,
                name='',
-               feature_only=False):
+               feature_only=False,
+               fp_levels=None):
     """Initialize model."""
     super().__init__(name=name)
 
     config = config or hparams_config.get_efficientdet_config(model_name)
     self.config = config
+    self.fp_levels = fp_levels
 
     # Backbone.
     backbone_name = config.backbone_name
@@ -880,7 +882,7 @@ class EfficientDetNet(tf.keras.Model):
     else:
       self._name = super().__init__(name, zero_based)
 
-  def call(self, inputs, training):
+  def call(self, inputs, training, fpn_levels=None):
     config = self.config
     # call backbone network.
     all_feats = self.backbone(inputs, training=training, features_only=True)
@@ -892,6 +894,13 @@ class EfficientDetNet(tf.keras.Model):
 
     # call feature network.
     fpn_feats = self.fpn_cells(feats, training)
+
+    if fpn_levels:
+        fpn_levels = [int(n) for n in fpn_levels]
+        fpn_levels_not = {3,4,5,6,7} - set(fpn_levels)
+        print(f'Using FPN levels: {fpn_levels}')
+        for n in fpn_levels_not:
+          fpn_feats[n-3] = fpn_feats[n-3]*0
 
     # call class/box/seg output network.
     outputs = []
@@ -940,6 +949,10 @@ class EfficientDetModel(EfficientDetNet):
     if not mode:
       return cls_outputs, box_outputs
 
+    # TODO(tanmingxing): remove this cast once FP16 works postprocessing.
+    cls_outputs = [tf.cast(i, tf.float32) for i in cls_outputs]
+    box_outputs = [tf.cast(i, tf.float32) for i in box_outputs]
+
     if mode == 'global':
       return postprocess.postprocess_global(self.config.as_dict(), cls_outputs,
                                             box_outputs, scales)
@@ -948,7 +961,7 @@ class EfficientDetModel(EfficientDetNet):
                                                cls_outputs, box_outputs, scales)
     raise ValueError('Unsupported postprocess mode {}'.format(mode))
 
-  def call(self, inputs, training=False, pre_mode='infer', post_mode='global'):
+  def call(self, inputs, training=False, pre_mode='infer', post_mode='global', fpn_levels=None):
     """Call this model.
 
     Args:
@@ -965,7 +978,7 @@ class EfficientDetModel(EfficientDetNet):
     # preprocess.
     inputs, scales = self._preprocessing(inputs, config.image_size, pre_mode)
     # network.
-    outputs = super().call(inputs, training)
+    outputs = super().call(inputs, training, fpn_levels=fpn_levels)
 
     if 'object_detection' in config.heads and post_mode:
       # postprocess for detection
